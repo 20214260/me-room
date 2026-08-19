@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 
 import { Screen } from '@/src/components/Screen';
 import { PersonaAvatar } from '@/src/components/PersonaAvatar';
@@ -17,6 +17,7 @@ import { useApp } from '@/src/context/AppContext';
 import { similarity } from '@/src/utils/persona';
 import { theme } from '@/src/constants/theme';
 import { supabase } from '@/src/services/supabase';
+import { getLatestFriendSurvey } from '@/src/services/surveyService';
 
 type CharacterType = 'SELF' | 'MIRROR' | 'IDEAL';
 
@@ -131,8 +132,9 @@ export default function RoomScreen() {
     self,
     ideal,
     mirror,
-    responses,
   } = useApp();
+
+  const [responseCount, setResponseCount] = useState(0);
 
   const selfIdealSimilarity = useMemo(() => {
     if (!self || !ideal) return 0;
@@ -167,13 +169,45 @@ export default function RoomScreen() {
     selfIdealSimilarity,
   ]);
 
-  const responseCount = Math.min(
-    responses.length,
-    3,
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+
+      const loadRealSurveyCount = async () => {
+        if (!supabase) return;
+
+        try {
+          const {
+            data: { user },
+            error: userError,
+          } = await supabase.auth.getUser();
+
+          if (userError || !user) {
+            return;
+          }
+
+          const latestSurvey = await getLatestFriendSurvey(user.id);
+
+          if (isActive) {
+            setResponseCount(
+              latestSurvey?.response_count ?? 0,
+            );
+          }
+        } catch (error) {
+          console.error('MIRROR 응답 수 불러오기 실패:', error);
+        }
+      };
+
+      loadRealSurveyCount();
+
+      return () => {
+        isActive = false;
+      };
+    }, []),
   );
 
   const responseProgress =
-    (responseCount / 3) * 100;
+    Math.min(100, (responseCount / 3) * 100);
 
   const handleLogout = async () => {
     if (!supabase) {
@@ -418,12 +452,24 @@ export default function RoomScreen() {
             }
           />
         ) : (
-          <PrimaryButton
-            label="세 가지 나 비교하기"
-            onPress={() =>
-              router.push('/compare')
-            }
-          />
+          <>
+            <PrimaryButton
+              label="세 가지 나 비교하기"
+              onPress={() =>
+                router.push('/compare')
+              }
+            />
+
+            <View style={styles.actionGap} />
+
+            <PrimaryButton
+              label="친구에게 MIRROR 더 물어보기"
+              variant="light"
+              onPress={() =>
+                router.push('/mirror/invite')
+              }
+            />
+          </>
         )}
 
         <View style={styles.actionGap} />
