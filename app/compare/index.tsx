@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Screen } from '@/src/components/Screen';
 import { PageTitle } from '@/src/components/PageTitle';
 import { PrimaryButton } from '@/src/components/PrimaryButton';
@@ -11,7 +11,13 @@ import { scoreLabels } from '@/src/types/persona';
 import { theme } from '@/src/constants/theme';
 
 export default function CompareScreen() {
-  const { self, mirror, ideal } = useApp();
+  const { self, mirror, ideal, refreshPersonas } = useApp();
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshPersonas();
+    }, [refreshPersonas]),
+  );
 
   const data = useMemo(() => {
     if (!self || !ideal) return null;

@@ -14,7 +14,7 @@ import { supabase } from '@/src/services/supabase';
 import { getLatestFriendSurvey } from '@/src/services/surveyService';
 
 export default function MirrorResult() {
-  const { self, mirror } = useApp();
+  const { self, mirror, refreshMirror } = useApp();
   const [responseCount, setResponseCount] = useState(0);
 
   useFocusEffect(
@@ -43,11 +43,12 @@ export default function MirrorResult() {
       };
 
       loadResponseCount();
+      refreshMirror();
 
       return () => {
         isActive = false;
       };
-    }, []),
+    }, [refreshMirror]),
   );
 
   if (!mirror) {
@@ -116,6 +117,14 @@ export default function MirrorResult() {
         label="친구에게 MIRROR 더 물어보기"
         variant="light"
         onPress={() => router.push('/mirror/invite')}
+      />
+
+      <View style={{ height: 10 }} />
+
+      <PrimaryButton
+        label="우리 방으로 돌아가기"
+        variant="light"
+        onPress={() => router.replace('/room')}
       />
     </Screen>
   );

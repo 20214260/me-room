@@ -132,6 +132,7 @@ export default function RoomScreen() {
     self,
     ideal,
     mirror,
+    refreshMirror,
   } = useApp();
 
   const [responseCount, setResponseCount] = useState(0);
@@ -199,11 +200,12 @@ export default function RoomScreen() {
       };
 
       loadRealSurveyCount();
+      refreshMirror();
 
       return () => {
         isActive = false;
       };
-    }, []),
+    }, [refreshMirror]),
   );
 
   const responseProgress =

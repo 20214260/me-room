@@ -21,6 +21,7 @@ import { useApp } from '@/src/context/AppContext';
 
 import { supabase } from '@/src/services/supabase';
 import { savePersona } from '@/src/services/personaService';
+import { analyzeInitialPersona } from '@/src/services/aiService';
 
 export default function IdealForm() {
   const { setIdeal } = useApp();
@@ -69,11 +70,34 @@ export default function IdealForm() {
         keywords.unshift(goal.trim().slice(0, 18));
       }
 
-      const persona = createPersona(
+      const fallbackPersona = createPersona(
         'IDEAL',
         scores,
         keywords,
       );
+      let persona = fallbackPersona;
+
+      try {
+        const analysis = await analyzeInitialPersona({
+          type: 'IDEAL',
+          tags: picked.map((tag) => tag.label),
+          text: goal.trim(),
+          baselineScores: scores,
+        });
+
+        if (analysis) {
+          persona = {
+            ...fallbackPersona,
+            title: analysis.title,
+            summary: analysis.summary,
+            keywords: analysis.keywords,
+            scores: analysis.scores,
+          };
+        }
+      } catch (aiError) {
+        // AI가 일시적으로 실패해도 기존 점수 계산으로 IDEAL 생성은 계속됩니다.
+        console.warn('IDEAL AI 분석 실패 - 기본 분석 사용:', aiError);
+      }
 
       const savedPersona = await savePersona(
         user.id,

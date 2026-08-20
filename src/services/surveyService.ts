@@ -1,39 +1,70 @@
 import { supabase } from './supabase';
 import { FriendResponse } from '@/src/types/survey';
 
+type PublicSurvey = {
+  id: string;
+  token: string;
+  status: string;
+  response_count: number;
+  min_responses: number;
+};
+
 export async function getSurveyByToken(token: string) {
   if (!supabase) return null;
 
+  // Production path: token-based RPC exposes only the one active survey.
+  const { data: rpcData, error: rpcError } = await supabase
+    .rpc('get_public_friend_survey', { p_token: token })
+    .maybeSingle();
+
+  if (!rpcError) return rpcData as PublicSurvey | null;
+
+  // Compatibility fallback while the new migration is not pushed yet.
   const { data, error } = await supabase
     .from('friend_surveys')
-    .select('id,user_id,token,status,response_count,min_responses')
+    .select('id,token,status,response_count,min_responses')
     .eq('token', token)
     .eq('status', 'active')
     .maybeSingle();
 
-  if (error) throw error;
-  return data;
+  if (error) throw rpcError;
+  return data as PublicSurvey | null;
 }
 
 export async function submitFriendResponse(
-  surveyId: string,
+  token: string,
   response: FriendResponse,
 ) {
   if (!supabase) return null;
+
+  const { data, error } = await supabase.functions.invoke('submit-survey', {
+    body: {
+      token,
+      answers: response.answers,
+      comment: response.comment ?? '',
+    },
+  });
+
+  if (!error) return data;
+
+  // Compatibility fallback for the current development DB before the
+  // secure Edge Function / RLS migration is deployed.
+  const survey = await getSurveyByToken(token);
+  if (!survey?.id) throw error;
 
   const answers = {
     items: response.answers,
     comment: response.comment ?? '',
   };
 
-  const { data, error } = await supabase
+  const { data: fallbackData, error: fallbackError } = await supabase
     .from('friend_responses')
-    .insert({ survey_id: surveyId, answers })
+    .insert({ survey_id: survey.id, answers })
     .select('id')
     .single();
 
-  if (error) throw error;
-  return data;
+  if (fallbackError) throw error;
+  return fallbackData;
 }
 
 export async function createFriendSurvey(userId: string) {
@@ -81,8 +112,8 @@ export async function getActiveFriendSurvey(userId: string) {
 }
 
 export async function getOrCreateFriendSurvey(userId: string) {
-  // MVP에서는 기존 설문이 있으면 active/closed 여부와 관계없이 재사용합니다.
-  // 3/3이 된 closed 설문을 버리고 새 0/3 설문을 만드는 것을 방지합니다.
+  // 3명은 최초 MIRROR 입주 기준일 뿐 설문의 종료 조건이 아니다.
+  // 기존 설문을 계속 재사용해 4명, 5명 이후의 시선도 누적한다.
   const existingSurvey = await getLatestFriendSurvey(userId);
 
   if (existingSurvey) {

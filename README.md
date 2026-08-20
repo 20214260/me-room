@@ -2,6 +2,9 @@
 
 내가 생각하는 나, 남들이 생각하는 나, 내가 되고 싶은 나를 각각 AI 캐릭터로 만들고 하나의 공간에서 비교하는 모바일 앱
 
+> **현재 구현 상태 (2026-08-20)**
+> Supabase Auth/DB, SELF·IDEAL 저장, 친구 설문, 3명 MIRROR 입주 및 4명 이상 누적 갱신, 세 Persona 비교, 오늘의 한 조각 SELF 변화, 서버측 OpenAI 분석, 웹 친구 설문 배포 구조까지 연결되어 있습니다. 배포 절차는 `DEPLOYMENT.md`, 기능 보존 기준은 `IMPLEMENTATION_NOTES.md`를 확인하세요.
+
 ---
 
 ## 1. 프로젝트 개요
@@ -418,9 +421,9 @@ Compare
 
 ---
 
-## 13. Frontend / Backend 동시 개발
+## 13. Frontend / Backend 동시 개발 (초기 개발 방식)
 
-Frontend는 Backend 기능 완성을 기다리지 않고 Mock Data를 이용해 화면을 먼저 개발한다.
+초기 단계에서는 Frontend가 Backend 기능 완성을 기다리지 않고 Mock Data를 이용해 화면을 먼저 개발했다. 현재 앱의 핵심 흐름은 Supabase 실제 데이터와 연결되어 있다.
 
 예시
 

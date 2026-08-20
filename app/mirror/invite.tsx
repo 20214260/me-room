@@ -6,6 +6,7 @@ import React, {
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Share,
   StyleSheet,
   Text,
@@ -23,12 +24,10 @@ import { PrimaryButton } from '@/src/components/PrimaryButton';
 import { PersonaAvatar } from '@/src/components/PersonaAvatar';
 
 import { theme } from '@/src/constants/theme';
-
+import { useApp } from '@/src/context/AppContext';
 import { supabase } from '@/src/services/supabase';
-
-import {
-  getOrCreateFriendSurvey,
-} from '@/src/services/surveyService';
+import { getOrCreateFriendSurvey } from '@/src/services/surveyService';
+import { buildSurveyShareUrl } from '@/src/utils/shareUrl';
 
 type Survey = {
   id: string;
@@ -40,64 +39,59 @@ type Survey = {
 };
 
 export default function MirrorInvite() {
-  const [survey, setSurvey] =
-    useState<Survey | null>(null);
+  const { refreshMirror } = useApp();
+  const [survey, setSurvey] = useState<Survey | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const [loading, setLoading] =
-    useState(true);
+  const loadSurvey = useCallback(async () => {
+    if (!supabase) {
+      setLoading(false);
+      Alert.alert(
+        '오류',
+        'Supabase 연결 정보를 확인해주세요.',
+      );
+      return;
+    }
 
-  const loadSurvey = useCallback(
-    async () => {
-      if (!supabase) {
-        setLoading(false);
-        Alert.alert(
-          '오류',
-          'Supabase 연결 정보를 확인해주세요.',
+    try {
+      setLoading(true);
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        throw new Error(
+          '로그인 정보를 확인할 수 없습니다.',
         );
-        return;
       }
 
-      try {
-        setLoading(true);
+      const data = await getOrCreateFriendSurvey(user.id);
 
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
-
-        if (userError || !user) {
-          throw new Error(
-            '로그인 정보를 확인할 수 없습니다.',
-          );
-        }
-
-        const data =
-          await getOrCreateFriendSurvey(
-            user.id,
-          );
-
-        if (!data) {
-          throw new Error(
-            '친구 설문을 생성할 수 없습니다.',
-          );
-        }
-
-        setSurvey(data as Survey);
-      } catch (error) {
-        console.error(error);
-
-        Alert.alert(
-          'MIRROR 설문 오류',
-          error instanceof Error
-            ? error.message
-            : '설문을 불러오는 중 문제가 발생했습니다.',
+      if (!data) {
+        throw new Error(
+          '친구 설문을 생성할 수 없습니다.',
         );
-      } finally {
-        setLoading(false);
       }
-    },
-    [],
-  );
+
+      setSurvey(data as Survey);
+
+      // 3번째 응답 이후에도 로그아웃/재로그인 없이 최신 MIRROR를 즉시 반영.
+      await refreshMirror();
+    } catch (error) {
+      console.error(error);
+
+      Alert.alert(
+        'MIRROR 설문 오류',
+        error instanceof Error
+          ? error.message
+          : '설문을 불러오는 중 문제가 발생했습니다.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [refreshMirror]);
 
   useFocusEffect(
     useCallback(() => {
@@ -136,33 +130,50 @@ export default function MirrorInvite() {
     );
   }
 
-  const responseCount =
-    survey.response_count ?? 0;
+  const responseCount = survey.response_count ?? 0;
+  const minResponses = survey.min_responses ?? 3;
+  const isComplete = responseCount >= minResponses;
+  const progress = Math.min(
+    100,
+    (responseCount / minResponses) * 100,
+  );
 
-  const minResponses =
-    survey.min_responses ?? 3;
-
-  const isComplete =
-    responseCount >= minResponses ||
-    survey.status === 'closed';
-
-  const progress =
-    Math.min(
-      100,
-      (responseCount / minResponses) * 100,
-    );
-
-  // 실제 웹 배포 후 이 주소는 배포 URL로 교체
-  const shareUrl =
-    `meroom://survey/${survey.token}`;
+  const shareUrl = buildSurveyShareUrl(survey.token);
+  const isWebShareReady = shareUrl.startsWith('http://') || shareUrl.startsWith('https://');
 
   const share = async () => {
-    await Share.share({
-      message:
-        `내가 모르는 나를 만들어주세요. ` +
-        `1분이면 끝나요!\n\n` +
-        `${shareUrl}`,
-    });
+    const message =
+      `내가 모르는 나를 만들어주세요. ` +
+      `1분이면 끝나요!\n\n` +
+      `${shareUrl}`;
+
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined') {
+        const webNavigator = navigator as Navigator & {
+          share?: (data: { title?: string; text?: string; url?: string }) => Promise<void>;
+        };
+
+        if (webNavigator.share) {
+          await webNavigator.share({
+            title: 'ME:ROOM 친구 설문',
+            text: '내가 모르는 나를 만들어주세요. 1분이면 끝나요!',
+            url: shareUrl,
+          });
+          return;
+        }
+
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(message);
+          Alert.alert('링크 복사 완료', '친구에게 붙여넣어 보내면 됩니다.');
+          return;
+        }
+      }
+
+      await Share.share({ message });
+    } catch (error) {
+      console.error('링크 공유 실패:', error);
+      Alert.alert('공유 실패', '아래 설문 링크를 직접 복사해 보내주세요.');
+    }
   };
 
   return (
@@ -170,7 +181,7 @@ export default function MirrorInvite() {
       <PageTitle
         eyebrow="STEP 3 · MIRROR"
         title="친구들이 보는 나를 모아볼까요?"
-        description="익명 응답 3개가 모이면 MIRROR 캐릭터를 분석할 준비가 완료됩니다."
+        description="익명 응답 3개가 모이면 MIRROR가 입주하고, 이후 응답도 계속 쌓여 MIRROR가 조금씩 갱신됩니다."
       />
 
       <View style={styles.hero}>
@@ -186,11 +197,10 @@ export default function MirrorInvite() {
 
         <Text style={styles.status}>
           {isComplete
-            ? 'MIRROR 분석 준비 완료!'
+            ? `${responseCount}명의 시선이 MIRROR에 반영되고 있어요.`
             : `MIRROR까지 ${Math.max(
                 0,
-                minResponses -
-                  responseCount,
+                minResponses - responseCount,
               )}명 남음`}
         </Text>
 
@@ -230,25 +240,24 @@ export default function MirrorInvite() {
 
       <View style={{ height: 10 }} />
 
-      {!isComplete ? (
-        <PrimaryButton
-          label="친구 설문 미리보기 / 직접 응답"
-          variant="light"
-          onPress={() =>
-            router.push(
-              `/survey/${survey.token}`,
-            )
-          }
-        />
-      ) : (
-        <PrimaryButton
-          label="우리 방으로 돌아가기"
-          variant="light"
-          onPress={() =>
-            router.push('/room')
-          }
-        />
-      )}
+      <PrimaryButton
+        label="친구 설문 미리보기 / 직접 응답"
+        variant="light"
+        onPress={() =>
+          router.push(`/survey/${survey.token}`)
+        }
+      />
+
+      {isComplete ? (
+        <>
+          <View style={{ height: 10 }} />
+          <PrimaryButton
+            label="우리 방으로 돌아가기"
+            variant="light"
+            onPress={() => router.push('/room')}
+          />
+        </>
+      ) : null}
 
       <View style={{ height: 10 }} />
 
@@ -259,10 +268,9 @@ export default function MirrorInvite() {
       />
 
       <Text style={styles.note}>
-        현재는 개발 단계이므로 공유 링크는 앱용
-        링크입니다. 최종 배포 후 친구가 설치 없이
-        브라우저에서 설문에 참여할 수 있는 웹 URL로
-        연결합니다.
+        {isWebShareReady
+          ? '이 링크는 브라우저 설문 주소입니다. 친구는 앱 설치나 로그인 없이 응답할 수 있습니다.'
+          : '현재 개발 환경에서는 앱용 링크가 표시됩니다. 웹 배포 후 EXPO_PUBLIC_APP_URL을 설정하면 친구가 설치 없이 브라우저에서 설문에 참여할 수 있습니다.'}
       </Text>
     </Screen>
   );
@@ -271,8 +279,7 @@ export default function MirrorInvite() {
 const styles = StyleSheet.create({
   hero: {
     alignItems: 'center',
-    backgroundColor:
-      theme.colors.softPink,
+    backgroundColor: theme.colors.softPink,
     borderRadius: 28,
     padding: 26,
     marginBottom: 16,
@@ -290,6 +297,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     marginTop: 3,
+    textAlign: 'center',
   },
 
   progress: {
@@ -303,14 +311,12 @@ const styles = StyleSheet.create({
 
   progressFill: {
     height: '100%',
-    backgroundColor:
-      theme.colors.mirror,
+    backgroundColor: theme.colors.mirror,
     borderRadius: 999,
   },
 
   linkBox: {
-    backgroundColor:
-      theme.colors.surface,
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.line,
     borderRadius: 18,

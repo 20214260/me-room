@@ -227,7 +227,7 @@ export default function Home() {
         />
 
         <Text style={styles.demo}>
-          현재 버전은 프론트 시연용 Mock Data가 포함되어 있습니다.
+          SELF · MIRROR · IDEAL, 세 가지 시선으로 나를 발견해보세요.
         </Text>
       </View>
     </Screen>

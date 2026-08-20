@@ -21,7 +21,7 @@ export default function SelfResult() {
       <PageTitle
         eyebrow="SELF CREATED"
         title="첫 번째 내가 만들어졌어요."
-        description="지금 이 결과는 프론트 시연용 점수 계산으로 생성되며, 이후 AI 분석 API로 교체할 수 있습니다."
+        description="처음 입력한 나와 이후의 기록을 바탕으로 현재 SELF를 6가지 성향으로 정리했습니다."
       />
 
       <PersonaCard persona={self} />

@@ -66,6 +66,14 @@ export default function IdealResult() {
         label="우리 방으로 들어가기"
         onPress={() => router.push('/room')}
       />
+
+      <View style={{ height: 10 }} />
+
+      <PrimaryButton
+        label="IDEAL 다시 만들기"
+        variant="light"
+        onPress={() => router.push('/ideal/form')}
+      />
     </Screen>
   );
 }
